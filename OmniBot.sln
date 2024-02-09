@@ -31,8 +31,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OmniBot.Bots.ChatClient", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OmniBot.Bots.GuidanceTest", "Bots\OmniBot.Bots.GuidanceTest\OmniBot.Bots.GuidanceTest.csproj", "{8B3EDE05-C61B-49DD-AD77-AFFCB62F1E8B}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OmniBot.Guidance", "OmniBot.Guidance\OmniBot.Guidance.csproj", "{89749B6A-F999-428B-BD9F-D565637E1F72}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OmniBot.SIPSorcery", "OmniBot.SIPSorcery\OmniBot.SIPSorcery.csproj", "{83BCDBF8-6156-4255-8733-322E05D56B0E}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OmniBot.Bots.Doorbell", "Bots\OmniBot.Bots.Doorbell\OmniBot.Bots.Doorbell.csproj", "{B5A76778-EE7C-425B-ABCE-E710B97356E3}"
@@ -99,10 +97,6 @@ Global
 		{8B3EDE05-C61B-49DD-AD77-AFFCB62F1E8B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8B3EDE05-C61B-49DD-AD77-AFFCB62F1E8B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8B3EDE05-C61B-49DD-AD77-AFFCB62F1E8B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{89749B6A-F999-428B-BD9F-D565637E1F72}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{89749B6A-F999-428B-BD9F-D565637E1F72}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{89749B6A-F999-428B-BD9F-D565637E1F72}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{89749B6A-F999-428B-BD9F-D565637E1F72}.Release|Any CPU.Build.0 = Release|Any CPU
 		{83BCDBF8-6156-4255-8733-322E05D56B0E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{83BCDBF8-6156-4255-8733-322E05D56B0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{83BCDBF8-6156-4255-8733-322E05D56B0E}.Release|Any CPU.ActiveCfg = Release|Any CPU

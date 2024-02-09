@@ -1,8 +1,8 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 
-using Microsoft.ML;
-using Microsoft.ML.Data;
-using Microsoft.ML.Transforms.Onnx;
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 using OmniBot.Common.Audio;
 using OmniBot.Common.Audio.Converters;
@@ -35,7 +35,7 @@ public class YAMNetSpeechDetector : ISpeechDetector
             }
         }
     }
-    public float DetectionThreshold { get; set; } = 0.1f;
+    public float DetectionThreshold { get; set; } = 0.25f;
     public TimeSpan PreSpeechDelay { get; set; } = TimeSpan.FromSeconds(1);
     public TimeSpan PostSpeechDelay { get; set; } = TimeSpan.FromSeconds(0.5);
     public bool SpeechDetected => wasSpeaking;
@@ -43,16 +43,18 @@ public class YAMNetSpeechDetector : ISpeechDetector
     private readonly IAudioSource _audioSource;
     private readonly LinearAudioConverter audioConverter;
 
-    private MLContext mlContext;
-    private OnnxTransformer model;
-    private DataViewSchema modelInputSchema;
-
     private const int MODEL_SAMPLE_COUNT = 15600;
     private const int HALF_BUFFER_SIZE = MODEL_SAMPLE_COUNT;
 
     private byte[] mainBuffer = new byte[HALF_BUFFER_SIZE * 2],
                    nextBuffer = new byte[HALF_BUFFER_SIZE];
+
     private float[] inputBuffer = new float[MODEL_SAMPLE_COUNT];
+    private float[] outputBuffer = new float[521];
+
+    private InferenceSession inferenceSession;
+    private FixedBufferOnnxValue inputValue;
+    private FixedBufferOnnxValue outputValue;
 
     private bool detecting = true;
     private int bufferIndex = 0;
@@ -71,18 +73,10 @@ public class YAMNetSpeechDetector : ISpeechDetector
         Array.Clear(mainBuffer);
         Array.Clear(nextBuffer);
 
-        // Load YAMNet model
-        mlContext = new MLContext();
-
-        var pipeline = mlContext.Transforms.ApplyOnnxModel("Models/yamnet_v1.onnx");
-
-        IDataView fitDataView = mlContext.Data.LoadFromEnumerable(new[] { new { waveform_binary = new float[0] } });
-        model = pipeline.Fit(fitDataView);
-
-        var inputSchemaBuilder = new DataViewSchema.Builder();
-        inputSchemaBuilder.AddColumn("waveform_binary", new VectorDataViewType(NumberDataViewType.Single, MODEL_SAMPLE_COUNT));
-
-        modelInputSchema = inputSchemaBuilder.ToSchema();
+        // Prepare YAMNet model
+        inferenceSession = new InferenceSession("Models/yamnet_v1.onnx");
+        inputValue = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(inputBuffer.AsMemory(), new[] { inputBuffer.Length }));
+        outputValue = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(outputBuffer.AsMemory(), new[] { 1, 521 }));
 
         // Start processing data
         audioSource.OnAudioBufferReceived += AudioSource_OnAudioBufferReceived;
@@ -147,21 +141,20 @@ public class YAMNetSpeechDetector : ISpeechDetector
         // Prepare samples
         // TODO: Half of this buffer should be already processed
         for (int i = 0; i < MODEL_SAMPLE_COUNT; i++)
-            inputBuffer[i] = (float)(mainBuffer[i * 2 + 1] << 8 | mainBuffer[i * 2]) / short.MaxValue - 1;
+            inputBuffer[i] = BitConverter.ToInt16(mainBuffer, i * 2) / (float)short.MaxValue;
 
         float maxSample = Math.Max(inputBuffer.Max(), Math.Abs(inputBuffer.Min()));
         for (int i = 0; i < MODEL_SAMPLE_COUNT; i++)
             inputBuffer[i] /= maxSample;
 
-        var inputObject = new { waveform_binary = inputBuffer };
-        IDataView inputDataView = mlContext.Data.LoadFromEnumerable(new[] { inputObject }, modelInputSchema);
-
         // Run model
-        IDataView outputDataView = model.Transform(inputDataView);
+        var inputNames = new[] { "waveform_binary" };
+        var inputValues = new[] { inputValue };
 
-        // Get output data
-        VBuffer<float> outputBuffer = outputDataView.GetColumn<VBuffer<float>>("tower0/network/layer32/final_output").First();
-        float[] outputData = outputBuffer.DenseValues().ToArray();
+        var outputNames = new[] { "tower0/network/layer32/final_output" };
+        var outputValues = new[] { outputValue };
+
+        inferenceSession.Run(inputNames, inputValues, outputNames, outputValues);
 
         // Map data to help debugging
         if (Debugger.IsAttached)
@@ -189,7 +182,7 @@ public class YAMNetSpeechDetector : ISpeechDetector
 
             var classResults = SPEECH_CLASSES
                 //.Where(i => outputData[i] > DetectionThreshold)
-                .ToDictionary(i => classMapping[i], i => outputData[i]);
+                .ToDictionary(i => classMapping[i], i => outputBuffer[i]);
 
             if (classResults.Count > 0)
             {
@@ -199,7 +192,7 @@ public class YAMNetSpeechDetector : ISpeechDetector
         }
 
         // Match against speech detection classes
-        bool speechDetected = SPEECH_CLASSES.Any(i => outputData[i] > DetectionThreshold);
+        bool speechDetected = SPEECH_CLASSES.Any(i => outputBuffer[i] > DetectionThreshold);
         return speechDetected;
     }
 }

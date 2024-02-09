@@ -1,8 +1,5 @@
-﻿using System.Diagnostics;
-
-using Microsoft.ML;
-using Microsoft.ML.Data;
-using Microsoft.ML.Transforms.Onnx;
+﻿using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 using OmniBot.Common.Audio;
 using OmniBot.Common.Audio.Converters;
@@ -13,6 +10,7 @@ namespace OmniBot.ML;
 // https://github.com/snakers4/silero-vad/blob/master/utils_vad.py
 public class SileroSpeechDetector : ISpeechDetector
 {
+    private const int ModelBatchSize = 512;
 
     public event SpeechStartedEventHandler OnSpeechStarted;
     public event SpeechStoppedEventHandler OnSpeechStopped;
@@ -24,56 +22,69 @@ public class SileroSpeechDetector : ISpeechDetector
         {
             detecting = value;
 
-            if (!detecting)
+            if (detecting)
             {
-
-                bufferIndex = 0;
+                Array.Clear(input);
+                Array.Clear(output);
+                Array.Clear(h0);
+                Array.Clear(h1);
+                Array.Clear(c0);
+                Array.Clear(c1);
             }
         }
     }
-    public float DetectionThreshold { get; set; } = 0.1f;
-    public TimeSpan PreSpeechDelay { get; set; } = TimeSpan.FromSeconds(1);
+    public float DetectionThreshold { get; set; } = 0.5f;
+    public TimeSpan PreSpeechDelay { get; set; } = TimeSpan.FromSeconds(0.25);
     public TimeSpan PostSpeechDelay { get; set; } = TimeSpan.FromSeconds(0.5);
-    public bool SpeechDetected => wasSpeaking;
 
     private readonly IAudioSource _audioSource;
     private readonly LinearAudioConverter audioConverter;
 
-    private MLContext mlContext;
-    private OnnxTransformer model;
-    private DataViewSchema modelInputSchema;
-
     private bool detecting = true;
-    private int bufferIndex = 0;
-
     private bool wasSpeaking = false;
     private TimeSpan speechStart;
     private TimeSpan speechStopTimeout = TimeSpan.MaxValue;
 
-    public SileroSpeechDetector(IAudioSource audioSource)
+    private float[] input = new float[ModelBatchSize];
+    private float[] output = new float[1];
+    private float[] h0 = new float[2 * 1 * 64];
+    private float[] h1 = new float[2 * 1 * 64];
+    private float[] c0 = new float[2 * 1 * 64];
+    private float[] c1 = new float[2 * 1 * 64];
+
+    private InferenceSession inferenceSession;
+    private FixedBufferOnnxValue inputValue;
+    private FixedBufferOnnxValue outputValue;
+    private FixedBufferOnnxValue srValue;
+    private FixedBufferOnnxValue h0Value, h1Value;
+    private FixedBufferOnnxValue c0Value, c1Value;
+    private string[] inputNames = new[] { "input", "sr", "h", "c" };
+    private string[] outputNames = new[] { "output", "hn", "cn" };
+    private FixedBufferOnnxValue[] input0Values, input1Values;
+    private FixedBufferOnnxValue[] output0Values, output1Values;
+    private bool hcSwapState = false;
+
+    public SileroSpeechDetector(IAudioSource audioSource, string modelPath = "Models/silero_vad_v4.onnx")
     {
         _audioSource = audioSource;
 
         // Prepare audio conversion
         audioConverter = new LinearAudioConverter(_audioSource.Format, new AudioFormat(16000, 1, 16));
 
-        // Load YAMNet model
-        mlContext = new MLContext();
+        // Prepare YAMNet model
+        inferenceSession = new InferenceSession(modelPath, new SessionOptions() { IntraOpNumThreads = 1, InterOpNumThreads = 1 });
 
-        var pipeline = mlContext.Transforms.ApplyOnnxModel("Models/silero_vad.onnx");
-
-        IDataView fitDataView = mlContext.Data.LoadFromEnumerable(new[] { new { input = new float[0, 0], sr = 16000, h = new float[0, 0, 0], c = new float[0, 0, 0] } });
-        model = pipeline.Fit(fitDataView);
-
-        int batchSize = 30 * 16000 / 1000; // 30ms at 16kHz
-
-        var inputSchemaBuilder = new DataViewSchema.Builder();
-        inputSchemaBuilder.AddColumn("input", new VectorDataViewType(NumberDataViewType.Single, batchSize));
-        inputSchemaBuilder.AddColumn("sr", NumberDataViewType.Int64);
-        inputSchemaBuilder.AddColumn("h", new VectorDataViewType(NumberDataViewType.Single, 2, batchSize, 64));
-        inputSchemaBuilder.AddColumn("c", new VectorDataViewType(NumberDataViewType.Single, 2, batchSize, 64));
-
-        modelInputSchema = inputSchemaBuilder.ToSchema();
+        inputValue = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(input.AsMemory(), new[] { 1, ModelBatchSize }));
+        outputValue = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(output.AsMemory(), new[] { 1, 1 }));
+        srValue = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<long>(new[] { 16000L }.AsMemory(), new int[0]));
+        h0Value = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(h0.AsMemory(), new[] { 2, 1, 64 }));
+        h1Value = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(h1.AsMemory(), new[] { 2, 1, 64 }));
+        c0Value = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(c0.AsMemory(), new[] { 2, 1, 64 }));
+        c1Value = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(c1.AsMemory(), new[] { 2, 1, 64 }));
+        input0Values = new[] { inputValue, srValue, h0Value, c0Value };
+        input1Values = new[] { inputValue, srValue, h1Value, c1Value };
+        output0Values = new[] { outputValue, h0Value, c0Value };
+        output1Values = new[] { outputValue, h1Value, c1Value };
 
         // Start processing data
         audioSource.OnAudioBufferReceived += AudioSource_OnAudioBufferReceived;
@@ -87,28 +98,46 @@ public class SileroSpeechDetector : ISpeechDetector
         // Convert to 16-bit mono 16kHz
         byte[] buffer = audioConverter.ConvertAudio(audioBuffer.Data);
 
-        // Normalize samples
-        float[] samples = new float[buffer.Length / 2];
-        for (int i = 0; i < samples.Length; i++)
-            samples[i] = (float)(buffer[i * 2 + 1] << 8 | buffer[i * 2]) / short.MaxValue - 1;
-        
-        // Prepare model inputs
-        var inputObject = new
+        // Run detection on blocks of 512 samples (32 ms)
+        for (int b = 0; b < buffer.Length / (ModelBatchSize * 2); b++)
         {
-            input = samples,
-            sr = 16000,
-            h = new float[0],
-            c = new float[0]
-        };
-        IDataView inputDataView = mlContext.Data.LoadFromEnumerable(new[] { inputObject }, modelInputSchema);
+            for (int i = 0; i < ModelBatchSize; i++)
+            {
+                int index = (b * ModelBatchSize + i) * 2;
 
-        // Run model
-        IDataView outputDataView = model.Transform(inputDataView);
+                if (index < buffer.Length)
+                    input[i] = BitConverter.ToInt16(buffer, index) / (float)short.MaxValue;
+                else
+                    input[i] = 0;
+            }
 
-        // Get output data
-        VBuffer<float> outputBuffer = outputDataView.GetColumn<VBuffer<float>>("tower0/network/layer32/final_output").First();
-        float[] outputData = outputBuffer.DenseValues().ToArray();
+            inferenceSession.Run(inputNames, hcSwapState ? input0Values : input1Values, outputNames, hcSwapState ? output0Values : output1Values);
+            hcSwapState = !hcSwapState;
 
+            var currentTimecode = audioBuffer.Timecode + TimeSpan.FromMilliseconds(b * ModelBatchSize / 16.0);
 
+            //Console.WriteLine($"Result: {output[0]}");
+
+            if (output[0] > DetectionThreshold)
+            {
+                if (!wasSpeaking)
+                {
+                    wasSpeaking = true;
+
+                    speechStart = currentTimecode - PreSpeechDelay;
+                    speechStopTimeout = currentTimecode + PostSpeechDelay;
+
+                    OnSpeechStarted?.Invoke(speechStart);
+                }
+            }
+            else
+            {
+                if (wasSpeaking && currentTimecode >= speechStopTimeout)
+                {
+                    wasSpeaking = false;
+                    OnSpeechStopped?.Invoke(speechStart, currentTimecode);
+                }
+            }
+        }
     }
 }
