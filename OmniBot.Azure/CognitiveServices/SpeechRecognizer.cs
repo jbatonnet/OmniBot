@@ -8,7 +8,7 @@ using OmniBot.Common.Speech;
 
 namespace OmniBot.Azure.CognitiveServices
 {
-    public class SpeechRecognizer : ISpeechTranscriber, IContinuousSpeechTranscriber
+    public class SpeechRecognizer : ISpeechTranscriber, IContinuousSpeechTranscriber, IAsyncDisposable
     {
         public static SpeechRecognizer CreateFromDefaultMicrophone(ILogger<SpeechRecognizer> logger, string speechKey, string serviceRegion, params Language[] languages)
         {
@@ -32,6 +32,7 @@ namespace OmniBot.Azure.CognitiveServices
         public static SpeechRecognizer CreateForDiscreteRecordings(string speechKey, string serviceRegion, params Language[] languages) => CreateForDiscreteRecordings(null, speechKey, serviceRegion, languages);
 
         public event Action OnSpeechDetected;
+        public event SpeechTranscribingEventHandler OnSpeechTranscribing;
         public event SpeechTranscribedEventHandler OnSpeechTranscribed;
 
         public bool Transcribing
@@ -49,7 +50,7 @@ namespace OmniBot.Azure.CognitiveServices
                     _ = defaultSpeechRecognizer.StartContinuousRecognitionAsync();
                 }
                 else
-                    _ = defaultSpeechRecognizer.StopContinuousRecognitionAsync();
+                    stopTranscriptionTask = defaultSpeechRecognizer.StopContinuousRecognitionAsync();
             }
         }
 
@@ -60,6 +61,7 @@ namespace OmniBot.Azure.CognitiveServices
         private bool transcribing = false;
         private SpeechConfig speechConfig;
         private Microsoft.CognitiveServices.Speech.SpeechRecognizer defaultSpeechRecognizer;
+        private Task stopTranscriptionTask;
 
         private SpeechRecognizer(ILogger<SpeechRecognizer> logger, string speechKey, string serviceRegion, AudioConfig audioConfig, Language[] languages)
         {
@@ -76,8 +78,10 @@ namespace OmniBot.Azure.CognitiveServices
             {
                 defaultSpeechRecognizer = CreateSpeechRecognizer(_audioConfig, _languages);
 
+                defaultSpeechRecognizer.Canceled += (s, e) => _logger?.LogTrace($"Cancelled: {e.ErrorDetails}");
+                defaultSpeechRecognizer.SessionStarted += (s, e) => _logger?.LogTrace($"Session started (id: {e.SessionId})");
+                defaultSpeechRecognizer.SessionStopped += (s, e) => _logger?.LogTrace($"Session stopped (id: {e.SessionId})");
                 defaultSpeechRecognizer.SpeechEndDetected += (s, e) => _logger?.LogTrace($"Speech end detected (offset: {e.Offset} ticks)");
-                defaultSpeechRecognizer.Recognizing += (s, e) => _logger?.LogTrace($"Recognizing speech \"{e.Result.Text}\"");
 
                 defaultSpeechRecognizer.SpeechStartDetected += (s, e) =>
                 {
@@ -85,9 +89,24 @@ namespace OmniBot.Azure.CognitiveServices
 
                     OnSpeechDetected?.Invoke();
                 };
+
+                defaultSpeechRecognizer.Recognizing += (s, e) =>
+                {
+                    if (!Transcribing)
+                        return;
+
+                    string transcription = e.Result.Text.Trim();
+                    _logger?.LogTrace($"Recognizing speech \"{transcription}\"");
+
+                    OnSpeechTranscribing?.Invoke(transcription);
+                };
                 defaultSpeechRecognizer.Recognized += (s, e) =>
                 {
+                    if (!Transcribing)
+                        return;
+
                     string transcription = e.Result.Text.Trim();
+                    _logger?.LogTrace($"Recognized speech \"{e.Result.Text}\"");
 
                     if (string.IsNullOrEmpty(transcription))
                         return;
@@ -95,8 +114,6 @@ namespace OmniBot.Azure.CognitiveServices
                         return;
                     if (transcription.ToLower().Contains("sous-titr"))
                         return;
-
-                    _logger?.LogTrace($"Recognized speech \"{e.Result.Text}\"");
 
                     OnSpeechTranscribed?.Invoke(CreateSpeechRecording(e.Result));
                 };
@@ -137,6 +154,15 @@ namespace OmniBot.Azure.CognitiveServices
             };
 
             return speechRecording;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (stopTranscriptionTask != null)
+                await stopTranscriptionTask;
+
+            if (defaultSpeechRecognizer != null)
+                await Task.Run(defaultSpeechRecognizer.Dispose);
         }
     }
 }

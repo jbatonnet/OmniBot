@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 
 using OmniBot.Common.Audio;
-using OmniBot.Common.Audio.Converters;
 
 namespace OmniBot.Common;
 
@@ -51,26 +50,21 @@ public class DiscreteRecordingSource : IAudioSource
 
     public async Task PlayAsync(AudioBuffer audioBuffer, CancellationToken cancellationToken = default)
     {
-        // Align data
-        //if (dataStream.Length % 2 == 1)
-        //    dataStream.WriteByte(0);
-
         // Convert to selected audio format
-        var audioConverter = new LinearAudioConverter(audioBuffer.Format, Format);
-        byte[] linearData = audioConverter.ConvertAudio(audioBuffer.Data);
+        audioBuffer = audioBuffer.ConvertTo(Format);
 
         // Add to send queue
         lock (sendAudioQueue)
         {
             sendAudioQueue.Clear();
 
-            for (int i = 0; i < linearData.Length; i += sendAudioBufferSize)
+            for (int i = 0; i < audioBuffer.Data.Length; i += sendAudioBufferSize)
             {
-                int length = Math.Min(i + sendAudioBufferSize, linearData.Length) - i;
+                int length = Math.Min(i + sendAudioBufferSize, audioBuffer.Data.Length) - i;
 
                 byte[] sendBuffer = new byte[sendAudioBufferSize];
                 Array.Clear(sendBuffer);
-                Array.Copy(linearData, i, sendBuffer, 0, length);
+                Array.Copy(audioBuffer.Data, i, sendBuffer, 0, length);
 
                 sendAudioQueue.Enqueue(sendBuffer);
             }

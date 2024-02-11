@@ -4,29 +4,6 @@ namespace OmniBot.Common.Audio;
 
 public class BufferedAudioSource : IAudioSource
 {
-    private class BufferCountOverride : IDisposable
-    {
-        private readonly BufferedAudioSource _bufferedAudioSource;
-
-        private int originalBufferCount;
-        private int overridenBufferCount;
-
-        public BufferCountOverride(BufferedAudioSource bufferedAudioSource, int bufferCount)
-        {
-            _bufferedAudioSource = bufferedAudioSource;
-
-            originalBufferCount = bufferedAudioSource.bufferCount;
-            overridenBufferCount = bufferCount;
-
-            _bufferedAudioSource.bufferCount = overridenBufferCount;
-        }
-
-        public void Dispose()
-        {
-            _bufferedAudioSource.bufferCount = originalBufferCount;
-        }
-    }
-
     public event AudioBufferReceivedEventHandler OnAudioBufferReceived;
 
     public bool Listening
@@ -35,22 +12,25 @@ public class BufferedAudioSource : IAudioSource
         set => _audioSource.Listening = value;
     }
     public AudioFormat Format => _audioSource.Format;
+    public TimeSpan Duration { get; init; }
 
     private readonly IAudioSource _audioSource;
+    private readonly int _bufferCount;
     private readonly TimeSpan _bufferSize;
 
-    private int bufferCount;
     private Queue<AudioBuffer> audioBuffers = new Queue<AudioBuffer>();
     private AudioBuffer currentAudioBuffer;
     private int bufferIndex;
 
-    public BufferedAudioSource(IAudioSource audioSource) : this(audioSource, 20, TimeSpan.FromMilliseconds(100)) { }
-    public BufferedAudioSource(IAudioSource audioSource, int bufferCount) : this(audioSource, bufferCount, TimeSpan.FromMilliseconds(100)) { }
-    public BufferedAudioSource(IAudioSource audioSource, int bufferCount, TimeSpan bufferSize)
+    public BufferedAudioSource(IAudioSource audioSource) : this(audioSource, TimeSpan.FromSeconds(2)) { }
+    public BufferedAudioSource(IAudioSource audioSource, TimeSpan bufferDuration) : this(audioSource, bufferDuration, TimeSpan.FromMilliseconds(100)) { }
+    public BufferedAudioSource(IAudioSource audioSource, TimeSpan bufferDuration, TimeSpan bufferChunkDuration)
     {
         _audioSource = audioSource;
-        this.bufferCount = bufferCount;
-        _bufferSize = bufferSize;
+        _bufferCount = (int)(bufferDuration.Ticks / bufferChunkDuration.Ticks) + 1;
+        _bufferSize = bufferChunkDuration;
+
+        Duration = bufferDuration;
 
         _audioSource.OnAudioBufferReceived += AudioSource_OnAudioBufferReceived;
     }
@@ -91,12 +71,15 @@ public class BufferedAudioSource : IAudioSource
             Data = new byte[totalLength]
         };
 
-        var matchingBuffers = audioBuffers.Append(currentAudioBuffer)
-            .SkipWhile(b => b.Timecode + _bufferSize <= fromTimecode)
-            .TakeWhile(b => b.Timecode + _bufferSize <= toTimecode);
+        AudioBuffer[] matchingBuffers;
 
-        if (Debugger.IsAttached)
-            matchingBuffers = matchingBuffers.ToArray();
+        lock (audioBuffers)
+        {
+            matchingBuffers = audioBuffers.Append(currentAudioBuffer)
+                .SkipWhile(b => b.Timecode + _bufferSize <= fromTimecode)
+                .TakeWhile(b => b.Timecode + _bufferSize <= toTimecode)
+                .ToArray();
+        }
 
         int copyIndex = 0;
 
@@ -111,11 +94,6 @@ public class BufferedAudioSource : IAudioSource
         }
 
         return audioBuffer;
-    }
-
-    public IDisposable OverrideBufferCount(int bufferCount = 1000)
-    {
-        return new BufferCountOverride(this, bufferCount);
     }
 
     private void AudioSource_OnAudioBufferReceived(AudioBuffer audioBuffer)
@@ -143,7 +121,7 @@ public class BufferedAudioSource : IAudioSource
             if (bufferIndex == currentAudioBuffer.Data.Length)
             {
                 audioBuffers.Enqueue(currentAudioBuffer);
-                while (audioBuffers.Count > bufferCount)
+                while (audioBuffers.Count > _bufferCount)
                     audioBuffers.Dequeue();
 
                 var lastBuffer = currentAudioBuffer;

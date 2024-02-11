@@ -72,7 +72,14 @@ public class SileroSpeechDetector : ISpeechDetector
         audioConverter = new LinearAudioConverter(_audioSource.Format, new AudioFormat(16000, 1, 16));
 
         // Prepare YAMNet model
-        inferenceSession = new InferenceSession(modelPath, new SessionOptions() { IntraOpNumThreads = 1, InterOpNumThreads = 1 });
+        var sessionOptions = new SessionOptions()
+        {
+            IntraOpNumThreads = 1,
+            InterOpNumThreads = 1,
+            LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR
+        };
+
+        inferenceSession = new InferenceSession(modelPath, sessionOptions);
 
         inputValue = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(input.AsMemory(), new[] { 1, ModelBatchSize }));
         outputValue = FixedBufferOnnxValue.CreateFromTensor(new DenseTensor<float>(output.AsMemory(), new[] { 1, 1 }));

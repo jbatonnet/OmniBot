@@ -5,7 +5,7 @@ public class ManualAudioSource : IAudioSource
     public event AudioBufferReceivedEventHandler OnAudioBufferReceived;
 
     public bool Listening { get; set; } = true;
-    public AudioFormat Format { get; init; }
+    public AudioFormat Format { get; }
 
     private TimeSpan timecode = TimeSpan.Zero;
 
@@ -16,8 +16,7 @@ public class ManualAudioSource : IAudioSource
 
     public void SendAudioBuffer(AudioBuffer audioBuffer)
     {
-        // TODO: Implement IEquatable and ==
-        if (Format.ToString() != audioBuffer.Format.ToString())
+        if (Format != audioBuffer.Format)
             throw new NotSupportedException();
 
         timecode += audioBuffer.GetDuration();

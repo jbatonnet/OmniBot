@@ -1,4 +1,6 @@
-﻿using Microsoft.CognitiveServices.Speech.Audio;
+﻿using System.Diagnostics;
+
+using Microsoft.CognitiveServices.Speech.Audio;
 
 using OmniBot.Common.Audio;
 
@@ -45,10 +47,23 @@ public class ContinuousAudioInputStream : PullAudioInputStreamCallback
     {
         if (currentBuffer == null)
         {
-            SpinWait spin = new SpinWait();
+            long timeout = Environment.TickCount + size / 32;
 
+            SpinWait spinWait = new SpinWait();
             while (bufferQueue.Count == 0)
-                spin.SpinOnce();
+            {
+                if (Environment.TickCount > timeout)
+                {
+                    Array.Clear(dataBuffer, 0, (int)size);
+
+                    if (Debugger.IsAttached)
+                        Console.WriteLine($"ContinuousAudioInputStream.Read() => Fake");
+
+                    return (int)size;
+                }
+
+                spinWait.SpinOnce();
+            }
 
             currentBuffer = bufferQueue.Dequeue();
             currentPosition = 0;
@@ -61,6 +76,9 @@ public class ContinuousAudioInputStream : PullAudioInputStreamCallback
 
         if (currentPosition == currentBuffer.Data.Length)
             currentBuffer = null;
+
+        if (Debugger.IsAttached)
+            Console.WriteLine($"ContinuousAudioInputStream.Read() => {read}");
 
         return read;
     }
