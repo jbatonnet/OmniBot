@@ -2,5 +2,5 @@
 
 public interface IConversationProcessor
 {
-    public Task<Event> ProcessConversation(Person member, List<Event> interactionHistory);
+    public Task<Event> ProcessConversation(Person person, IEnumerable<Event> interactionHistory);
 }

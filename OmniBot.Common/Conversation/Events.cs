@@ -7,7 +7,7 @@
 
     public class Message : Event
     {
-        public Person Member { get; set; }
+        public Person Person { get; set; }
         public string Text { get; set; }
     }
     public class Interruption : Event

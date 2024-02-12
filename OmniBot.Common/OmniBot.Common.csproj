@@ -6,6 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="..\..\.dockerignore" Link=".dockerignore">
+      <DependentUpon>$(DockerDefaultDockerfile)</DependentUpon>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
 	<PackageReference Include="FftSharp" Version="2.1.0" />
 	<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.3" />
 	<PackageReference Include="NAudio" Version="2.1.0" />

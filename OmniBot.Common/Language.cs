@@ -16,7 +16,18 @@ namespace OmniBot.Common
 
         public string GetTwoLettersCode() => cultureInfo.TwoLetterISOLanguageName;
         public string GetIetfTag() => cultureInfo.IetfLanguageTag;
-        public string GetFullname() => cultureInfo.EnglishName;
+        public CultureInfo GetCulture() => cultureInfo;
+        public string GetFullName() => cultureInfo.EnglishName;
+        public string GetFullName(Language language)
+        {
+            var oldCulture = CultureInfo.CurrentCulture;
+
+            CultureInfo.CurrentCulture = language.GetCulture();
+            string name = cultureInfo.NativeName;
+            CultureInfo.CurrentCulture = oldCulture;
+
+            return name;
+        }
 
         public static Language GetByIetfTag(string ietfTag)
         {
