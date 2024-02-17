@@ -20,10 +20,13 @@ namespace OmniBot.Common
         public string GetFullName() => cultureInfo.EnglishName;
         public string GetFullName(Language language)
         {
+            if (language.GetTwoLettersCode() == "en")
+                return cultureInfo.EnglishName;
+
             var oldCulture = CultureInfo.CurrentCulture;
 
             CultureInfo.CurrentCulture = language.GetCulture();
-            string name = cultureInfo.NativeName;
+            string name = cultureInfo.DisplayName;
             CultureInfo.CurrentCulture = oldCulture;
 
             return name;

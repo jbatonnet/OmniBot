@@ -1,12 +1,12 @@
 ﻿using OmniBot.Common;
 
-using OpenAI.ObjectModels.RequestModels;
+using OpenAI_API.Chat;
 
 namespace OmniBot.OpenAI.ChatCompletion
 {
     public class FriendChatGptDiscussionProcessor : ChatGptDiscussionProcessor
     {
-        public Gender FriendGender { get; set; } = Gender.Female;
+        public PersonGender FriendGender { get; set; } = PersonGender.Female;
         public string FriendName { get; set; } = "Jenny";
         public byte FriendAge { get; set; } = 30;
 
@@ -16,7 +16,7 @@ namespace OmniBot.OpenAI.ChatCompletion
         public string Location { get; set; } = "Canada";
         public string AdditionalContext { get; set; }
 
-        public FriendChatGptDiscussionProcessor(string apiKey) : base(apiKey)
+        public FriendChatGptDiscussionProcessor(ChatCompletionClient chatCompletionClient) : base(chatCompletionClient)
         {
         }
 
@@ -79,8 +79,8 @@ namespace OmniBot.OpenAI.ChatCompletion
                     break;
             }
 
-            context = ProcessGenderTemplate(context, FriendGender);
-            messages.Insert(0, ChatMessage.FromSystem(context));
+            context = MessageHelper.ProcessGenderTemplate(context, FriendGender);
+            messages.Insert(0, new ChatMessage(ChatMessageRole.System, context));
 
             return messages;
         }

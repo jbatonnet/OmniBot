@@ -2,15 +2,15 @@
 
 using OmniBot.Common;
 
-using OpenAI.ObjectModels.RequestModels;
+using OpenAI_API.Chat;
 
 namespace OmniBot.OpenAI.ChatCompletion
 {
     public class GroupChatGptDiscussionProcessor : ChatGptDiscussionProcessor
     {
-        public record Person(string name, string[] surnames, int? age, Gender gender, string description);
+        public record Person(string name, string[] surnames, int? age, PersonGender gender, string description);
 
-        public Gender BotGender { get; set; } = Gender.Neutral;
+        public PersonGender BotGender { get; set; } = PersonGender.Neutral;
         public string BotName { get; set; } = "Jenny";
         public string[] BotSurnames { get; set; } = new[] { "Jennifer" };
         public byte BotAge { get; set; } = 30;
@@ -26,7 +26,7 @@ namespace OmniBot.OpenAI.ChatCompletion
         private Person lastTalkingPerson = null;
         private DateTime lastInteraction = DateTime.MinValue;
 
-        public GroupChatGptDiscussionProcessor(string apiKey) : base(apiKey)
+        public GroupChatGptDiscussionProcessor(ChatCompletionClient chatCompletionClient) : base(chatCompletionClient)
         {
         }
 
@@ -67,7 +67,7 @@ namespace OmniBot.OpenAI.ChatCompletion
 
             if (lastTalkingPerson != person)
             {
-                messageHistory.Add(ChatMessage.FromSystem($"{person.name} is now talking."));
+                messageHistory.Add(new ChatMessage(ChatMessageRole.System, $"{person.name} is now talking."));
                 lastTalkingPerson = person;
             }
 
@@ -79,7 +79,7 @@ namespace OmniBot.OpenAI.ChatCompletion
         {
             Persons.Add(person);
 
-            messageHistory.Add(ChatMessage.FromSystem($"{person.name} entered the room and joined the discussion."));
+            messageHistory.Add(new ChatMessage(ChatMessageRole.System, $"{person.name} entered the room and joined the discussion."));
             lastTalkingPerson = null;
 
             if (!GreetPersonsEntering)
@@ -92,7 +92,7 @@ namespace OmniBot.OpenAI.ChatCompletion
         {
             Persons.Remove(person);
 
-            messageHistory.Add(ChatMessage.FromSystem($"{person.name} left the discussion and the room."));
+            messageHistory.Add(new ChatMessage(ChatMessageRole.System, $"{person.name} left the discussion and the room."));
 
             return null;
         }
@@ -111,7 +111,7 @@ namespace OmniBot.OpenAI.ChatCompletion
                 contextBuilder.Append($"There is {person.name}");
 
                 if (person.age != null)
-                    contextBuilder.Append(Genderify($", (he|she|they) (is|is|are) {person.age}", person.gender));
+                    contextBuilder.Append(MessageHelper.ProcessGenderTemplate($", (he|she|they) (is|is|are) {person.age}", person.gender));
 
                 contextBuilder.Append(". ");
 
@@ -119,7 +119,7 @@ namespace OmniBot.OpenAI.ChatCompletion
                     contextBuilder.Append($"{person.description}. ");
             }
 
-            contextBuilder.Append(Genderify($"Finally, there is {BotName}, (he|she|they) (is|is|are) {BotAge}. ", BotGender));
+            contextBuilder.Append(MessageHelper.ProcessGenderTemplate($"Finally, there is {BotName}, (he|she|they) (is|is|are) {BotAge}. ", BotGender));
             contextBuilder.Append($"You will simulate this fictional conversation playing the role of {BotName}. You will use short and precise sentences. ");
 
             if (!string.IsNullOrWhiteSpace(AdditionalContext))
@@ -129,7 +129,7 @@ namespace OmniBot.OpenAI.ChatCompletion
 
             List<ChatMessage> messages = base.PrepareMessageList(language);
 
-            messages.Insert(0, ChatMessage.FromSystem(context));
+            messages.Insert(0, new ChatMessage(ChatMessageRole.System, context));
 
             return messages;
         }

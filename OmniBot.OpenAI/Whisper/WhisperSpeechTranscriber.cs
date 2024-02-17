@@ -2,41 +2,46 @@
 using OmniBot.Common.Audio;
 using OmniBot.Common.Speech;
 
-using OpenAI;
-using OpenAI.Managers;
-using OpenAI.ObjectModels.RequestModels;
+using OpenAI_API;
 
 namespace OmniBot.OpenAI.Whisper
 {
     public class WhisperSpeechTranscriber : ISpeechTranscriber
     {
-        private OpenAIService openAiService;
+        private string _apiKey;
+        private string _apiEndpoint;
 
-        public WhisperSpeechTranscriber(string apiKey)
+        private OpenAIAPI openAiApi;
+
+        public WhisperSpeechTranscriber(string apiKey) : this(apiKey, "https://api.openai.com/v1") { }
+        public WhisperSpeechTranscriber(string apiKey, string apiEndpoint)
         {
-            OpenAiOptions openAiOptions = new OpenAiOptions();
-            openAiOptions.ApiKey = apiKey;
+            _apiKey = apiKey;
+            _apiEndpoint = apiEndpoint;
 
-            openAiService = new OpenAIService(openAiOptions);
+            openAiApi = new OpenAIAPI()
+            {
+                ApiUrlFormat = apiEndpoint + "/{1}",
+                Auth = new APIAuthentication(apiKey)
+            };
         }
 
         public async Task<SpeechRecording> TranscribeAsync(AudioBuffer audioBuffer, Language languageHint)
         {
-            var audioCreateTranscriptionRequest = new AudioCreateTranscriptionRequest();
+            byte[] waveBytes = audioBuffer.ToWaveBytes();
+            using MemoryStream waveStream = new MemoryStream(waveBytes);
 
-            // audioCreateTranscriptionRequest.Prompt can be used to give hints, about members for example
-            audioCreateTranscriptionRequest.Model = "whisper-1";
-            audioCreateTranscriptionRequest.File = audioBuffer.ToWaveData();
-            audioCreateTranscriptionRequest.FileName = "audio.wav";
-            audioCreateTranscriptionRequest.ResponseFormat = "verbose_json";
-            audioCreateTranscriptionRequest.Language = languageHint?.GetTwoLettersCode();
-
-            var response = await openAiService.Audio.CreateTranscription(audioCreateTranscriptionRequest);
+            var result = await openAiApi.Transcriptions.GetWithDetailsAsync
+            (
+                audioStream: waveStream,
+                filename: "audio.wav",
+                language: languageHint?.GetTwoLettersCode()
+            );
 
             SpeechRecording speechTranscription = new SpeechRecording(audioBuffer)
             {
-                Transcription = response.Text,
-                Language = response?.Language switch
+                Transcription = result.text,
+                Language = result.language switch
                 {
                     "english" => Language.English,
                     "french" => Language.French,

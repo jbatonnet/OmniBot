@@ -1,12 +1,12 @@
 ﻿using OmniBot.Common;
 
-using OpenAI.ObjectModels.RequestModels;
+using OpenAI_API.Chat;
 
 namespace OmniBot.OpenAI.ChatCompletion
 {
     public class AssistantChatGptDiscussionProcessor : ChatGptDiscussionProcessor
     {
-        public AssistantChatGptDiscussionProcessor(string apiKey) : base(apiKey)
+        public AssistantChatGptDiscussionProcessor(ChatCompletionClient chatCompletionClient) : base(chatCompletionClient)
         {
         }
 
@@ -27,7 +27,7 @@ namespace OmniBot.OpenAI.ChatCompletion
         {
             List<ChatMessage> messages = base.PrepareMessageList(language);
 
-            messages.Insert(0, ChatMessage.FromSystem("You are a polite and helpful assistant"));
+            messages.Insert(0, new ChatMessage(ChatMessageRole.System, "You are a polite and helpful assistant"));
 
             return messages;
         }

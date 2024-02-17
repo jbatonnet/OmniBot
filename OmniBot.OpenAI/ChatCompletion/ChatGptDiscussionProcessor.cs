@@ -1,34 +1,20 @@
-﻿using System.Text.RegularExpressions;
+﻿using OmniBot.Common;
 
-using OmniBot.Common;
-
-using OpenAI;
-using OpenAI.Managers;
-using OpenAI.ObjectModels.RequestModels;
+using OpenAI_API.Chat;
 
 namespace OmniBot.OpenAI.ChatCompletion
 {
     public abstract class ChatGptDiscussionProcessor : IDiscussionProcessor
     {
-        public enum Gender
-        {
-            Neutral,
-            Male,
-            Female
-        }
-
         public bool AddDateTimeInformation { get; set; } = true;
+
+        private readonly ChatCompletionClient _chatCompletionClient;
 
         protected List<ChatMessage> messageHistory = new List<ChatMessage>();
 
-        private OpenAIService openAiService;
-
-        public ChatGptDiscussionProcessor(string apiKey)
+        public ChatGptDiscussionProcessor(ChatCompletionClient chatCompletionClient)
         {
-            OpenAiOptions openAiOptions = new OpenAiOptions();
-            openAiOptions.ApiKey = apiKey;
-
-            openAiService = new OpenAIService(openAiOptions);
+            _chatCompletionClient = chatCompletionClient;
         }
 
         public virtual Task<string> InitiateDiscussion(Language language = null)
@@ -37,7 +23,7 @@ namespace OmniBot.OpenAI.ChatCompletion
         }
         public virtual Task<string> Process(string message, Language language = null)
         {
-            messageHistory.Add(ChatMessage.FromUser(message));
+            messageHistory.Add(new ChatMessage(ChatMessageRole.User, message));
             return ProcessInternal(language);
         }
         public void Reset()
@@ -59,7 +45,7 @@ namespace OmniBot.OpenAI.ChatCompletion
 
                     case "en":
                     default:
-                        messages.Add(ChatMessage.FromSystem($"We are {DateTime.Now:dddd MMMM d}th of {DateTime.Now:yyyy} and it is {DateTime.Now.ToShortTimeString()}"));
+                        messages.Add(new ChatMessage(ChatMessageRole.System, $"We are {DateTime.Now:dddd MMMM d}th of {DateTime.Now:yyyy} and it is {DateTime.Now.ToShortTimeString()}"));
                         break;
                 }
             }
@@ -70,34 +56,11 @@ namespace OmniBot.OpenAI.ChatCompletion
         }
         protected async Task<string> ProcessInternal(Language language)
         {
-            ChatCompletionCreateRequest chatCompletionRequest = new ChatCompletionCreateRequest()
-            {
-                Model = "gpt-3.5-turbo",
-                Messages = PrepareMessageList(language)
-            };
+            var message = await _chatCompletionClient.ProcessMessages(PrepareMessageList(language));
 
-            var response = await openAiService.ChatCompletion.CreateCompletion(chatCompletionRequest);
-            if (!response.Successful)
-                throw new Exception(response.Error.Message);
+            messageHistory.Add(new ChatMessage(ChatMessageRole.Assistant, message.TextContent));
 
-            string message = response.Choices.FirstOrDefault()?.Message?.Content;
-            if (string.IsNullOrWhiteSpace(message))
-                return null;
-
-            messageHistory.Add(ChatMessage.FromAssistant(message));
-
-            return message;
+            return message.TextContent;
         }
-
-        protected static string ProcessGenderTemplate(string template, Gender gender)
-        {
-            return Regex.Replace(template, @"\(([^|]*)\|([^|\)]*)(?:\|([^)])*)?\)", m => gender switch
-            {
-                Gender.Male => m.Groups[1].Value,
-                Gender.Female => m.Groups[2].Value,
-                Gender.Neutral => m.Groups.Count == 4 ? m.Groups[3].Value : m.Groups[1].Value
-            });
-        }
-        protected static string Genderify(string template, Gender gender) => ProcessGenderTemplate(template, gender);
     }
 }
