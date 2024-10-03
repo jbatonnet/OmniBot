@@ -2,8 +2,6 @@
 
 using OmniBot.Common;
 
-using OpenAI_API.Chat;
-
 namespace OmniBot.OpenAI.ChatCompletion
 {
     public class GroupChatGptDiscussionProcessor : ChatGptDiscussionProcessor
@@ -67,7 +65,7 @@ namespace OmniBot.OpenAI.ChatCompletion
 
             if (lastTalkingPerson != person)
             {
-                messageHistory.Add(new ChatMessage(ChatMessageRole.System, $"{person.name} is now talking."));
+                messageHistory.Add(new Message(MessageRole.System, $"{person.name} is now talking."));
                 lastTalkingPerson = person;
             }
 
@@ -79,7 +77,7 @@ namespace OmniBot.OpenAI.ChatCompletion
         {
             Persons.Add(person);
 
-            messageHistory.Add(new ChatMessage(ChatMessageRole.System, $"{person.name} entered the room and joined the discussion."));
+            messageHistory.Add(new Message(MessageRole.System, $"{person.name} entered the room and joined the discussion."));
             lastTalkingPerson = null;
 
             if (!GreetPersonsEntering)
@@ -92,12 +90,12 @@ namespace OmniBot.OpenAI.ChatCompletion
         {
             Persons.Remove(person);
 
-            messageHistory.Add(new ChatMessage(ChatMessageRole.System, $"{person.name} left the discussion and the room."));
+            messageHistory.Add(new Message(MessageRole.System, $"{person.name} left the discussion and the room."));
 
             return null;
         }
 
-        protected override List<ChatMessage> PrepareMessageList(Language language)
+        protected override List<Message> PrepareMessageList(Language language)
         {
             StringBuilder contextBuilder = new StringBuilder();
 
@@ -127,9 +125,9 @@ namespace OmniBot.OpenAI.ChatCompletion
 
             string context = contextBuilder.ToString();
 
-            List<ChatMessage> messages = base.PrepareMessageList(language);
+            List<Message> messages = base.PrepareMessageList(language);
 
-            messages.Insert(0, new ChatMessage(ChatMessageRole.System, context));
+            messages.Insert(0, new Message(MessageRole.System, context));
 
             return messages;
         }

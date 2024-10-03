@@ -1,7 +1,5 @@
 ﻿using OmniBot.Common;
 
-using OpenAI_API.Chat;
-
 namespace OmniBot.OpenAI.ChatCompletion
 {
     public abstract class ChatGptDiscussionProcessor : IDiscussionProcessor
@@ -10,7 +8,7 @@ namespace OmniBot.OpenAI.ChatCompletion
 
         private readonly ChatCompletionClient _chatCompletionClient;
 
-        protected List<ChatMessage> messageHistory = new List<ChatMessage>();
+        protected List<Message> messageHistory = new List<Message>();
 
         public ChatGptDiscussionProcessor(ChatCompletionClient chatCompletionClient)
         {
@@ -23,7 +21,7 @@ namespace OmniBot.OpenAI.ChatCompletion
         }
         public virtual Task<string> Process(string message, Language language = null)
         {
-            messageHistory.Add(new ChatMessage(ChatMessageRole.User, message));
+            messageHistory.Add(new Message(MessageRole.User, message));
             return ProcessInternal(language);
         }
         public void Reset()
@@ -31,9 +29,9 @@ namespace OmniBot.OpenAI.ChatCompletion
             messageHistory.Clear();
         }
 
-        protected virtual List<ChatMessage> PrepareMessageList(Language language)
+        protected virtual List<Message> PrepareMessageList(Language language)
         {
-            List<ChatMessage> messages = new List<ChatMessage>();
+            List<Message> messages = new List<Message>();
 
             if (AddDateTimeInformation)
             {
@@ -45,7 +43,7 @@ namespace OmniBot.OpenAI.ChatCompletion
 
                     case "en":
                     default:
-                        messages.Add(new ChatMessage(ChatMessageRole.System, $"We are {DateTime.Now:dddd MMMM d}th of {DateTime.Now:yyyy} and it is {DateTime.Now.ToShortTimeString()}"));
+                        messages.Add(new Message(MessageRole.System, $"We are {DateTime.Now:dddd MMMM d}th of {DateTime.Now:yyyy} and it is {DateTime.Now.ToShortTimeString()}"));
                         break;
                 }
             }
@@ -58,9 +56,9 @@ namespace OmniBot.OpenAI.ChatCompletion
         {
             var message = await _chatCompletionClient.ProcessMessages(PrepareMessageList(language));
 
-            messageHistory.Add(new ChatMessage(ChatMessageRole.Assistant, message.TextContent));
+            messageHistory.Add(new Message(MessageRole.Assistant, message.Content));
 
-            return message.TextContent;
+            return message.Content;
         }
     }
 }

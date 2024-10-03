@@ -2,7 +2,9 @@
 
 public class OpenAIOptions
 {
-    public string ApiEndpoint { get; set; } = "https://api.openai.com/v1";
+    public const string OpenAIEndpoint = "https://api.openai.com/v1";
+
+    public string ApiEndpoint { get; set; } = OpenAIEndpoint;
     public string ApiKey { get; set; }
     public string Model { get; set; }
 }

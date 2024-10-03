@@ -28,10 +28,13 @@ public class DiscreteRecordingSource : IAudioSource
     private readonly int sendAudioBufferSize;
 
     private bool listening = true;
-    private Timer sendAudioTimer;
-    private ConcurrentQueue<byte[]> sendAudioQueue = new();
     private byte[] encodedSilence;
     private TimeSpan timecode = TimeSpan.Zero;
+
+    private Timer sendAudioTimer;
+    private ConcurrentQueue<byte[]> sendAudioQueue = new();
+    //private Mutex sendAudioMutex = new();
+    private Semaphore sendAudioSemaphore = new(1, 1);
 
     public DiscreteRecordingSource(AudioFormat audioFormat) : this(audioFormat, TimeSpan.FromMilliseconds(20)) { }
     public DiscreteRecordingSource(AudioFormat audioFormat, TimeSpan sendAudioPeriod)
@@ -53,32 +56,38 @@ public class DiscreteRecordingSource : IAudioSource
         // Convert to selected audio format
         audioBuffer = audioBuffer.ConvertTo(Format);
 
+        //sendAudioSemaphore.WaitOne();
+        await Task.Run(sendAudioSemaphore.WaitOne);
+
         // Add to send queue
-        lock (sendAudioQueue)
+        sendAudioQueue.Clear();
+
+        for (int i = 0; i < audioBuffer.Data.Length; i += sendAudioBufferSize)
         {
-            sendAudioQueue.Clear();
+            int length = Math.Min(i + sendAudioBufferSize, audioBuffer.Data.Length) - i;
 
-            for (int i = 0; i < audioBuffer.Data.Length; i += sendAudioBufferSize)
-            {
-                int length = Math.Min(i + sendAudioBufferSize, audioBuffer.Data.Length) - i;
+            byte[] sendBuffer = new byte[sendAudioBufferSize];
+            Array.Clear(sendBuffer);
+            Array.Copy(audioBuffer.Data, i, sendBuffer, 0, length);
 
-                byte[] sendBuffer = new byte[sendAudioBufferSize];
-                Array.Clear(sendBuffer);
-                Array.Copy(audioBuffer.Data, i, sendBuffer, 0, length);
-
-                sendAudioQueue.Enqueue(sendBuffer);
-            }
+            sendAudioQueue.Enqueue(sendBuffer);
         }
 
         // Wait for the duration of the sound, or clear the queue if needed
+        // FIXME: Make sure data is indeed consumed
         try
         {
-            await Task.Delay((int)Math.Max(0, audioBuffer.GetDuration().TotalMilliseconds), cancellationToken);
+            while (sendAudioQueue.Count > 0)
+                await Task.Delay(sendAudioPeriodMilliseconds);
         }
         catch
         {
             sendAudioQueue.Clear();
             throw;
+        }
+        finally
+        {
+            sendAudioSemaphore.Release();
         }
     }
 
@@ -115,9 +124,9 @@ public static class AudioSinkExtensions
         _ = audioSink.PlayAsync(discreteRecordingSource, cancellationTokenSource.Token);
 
         await discreteRecordingSource.PlayAsync(audioBuffer, cancellationToken);
-        await audioSink.PlayAsync(null);
+        //await audioSink.PlayAsync(null);
 
-        discreteRecordingSource.Listening = false;
-        cancellationTokenSource.Cancel();
+        //discreteRecordingSource.Listening = false;
+        //cancellationTokenSource.Cancel();
     }
 }

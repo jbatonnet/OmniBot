@@ -1,7 +1,5 @@
 ﻿using OmniBot.Common;
 
-using OpenAI_API.Chat;
-
 namespace OmniBot.OpenAI.ChatCompletion
 {
     public class FriendChatGptDiscussionProcessor : ChatGptDiscussionProcessor
@@ -33,9 +31,9 @@ namespace OmniBot.OpenAI.ChatCompletion
             }
         }
 
-        protected override List<ChatMessage> PrepareMessageList(Language language)
+        protected override List<Message> PrepareMessageList(Language language)
         {
-            List<ChatMessage> messages = base.PrepareMessageList(language);
+            List<Message> messages = base.PrepareMessageList(language);
 
             string context;
 
@@ -80,7 +78,7 @@ namespace OmniBot.OpenAI.ChatCompletion
             }
 
             context = MessageHelper.ProcessGenderTemplate(context, FriendGender);
-            messages.Insert(0, new ChatMessage(ChatMessageRole.System, context));
+            messages.Insert(0, new Message(MessageRole.System, context));
 
             return messages;
         }

@@ -122,11 +122,11 @@ namespace OmniBot.SIPSorcery
 
             sinkSource = audioSource;
 
-            linearAudioConverter = new LinearAudioConverter(sinkSource.Format, Format);
-            sinkSource.OnAudioBufferReceived += SinkSource_OnAudioBufferReceived;
-
             if (sinkSource != null)
             {
+                linearAudioConverter = new LinearAudioConverter(sinkSource.Format, Format);
+                sinkSource.OnAudioBufferReceived += SinkSource_OnAudioBufferReceived;
+
                 Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ContinueWith(t =>
                 {
                     PlayAsync(null);

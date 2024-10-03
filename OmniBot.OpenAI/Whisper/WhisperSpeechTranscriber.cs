@@ -1,55 +1,61 @@
-﻿using OmniBot.Common;
+﻿using System.ClientModel;
+
+using OmniBot.Common;
 using OmniBot.Common.Audio;
 using OmniBot.Common.Speech;
 
-using OpenAI_API;
+using OpenAI;
+using OpenAI.Audio;
 
-namespace OmniBot.OpenAI.Whisper
+namespace OmniBot.OpenAI.Whisper;
+
+public class WhisperSpeechTranscriber : ISpeechTranscriber
 {
-    public class WhisperSpeechTranscriber : ISpeechTranscriber
+    private string _apiKey;
+    private string _apiEndpoint;
+
+    private OpenAIClient openAIClient;
+
+    public WhisperSpeechTranscriber(string apiKey) : this(apiKey, OpenAIOptions.OpenAIEndpoint) { }
+    public WhisperSpeechTranscriber(string apiKey, string apiEndpoint)
     {
-        private string _apiKey;
-        private string _apiEndpoint;
+        _apiKey = apiKey;
+        _apiEndpoint = apiEndpoint;
 
-        private OpenAIAPI openAiApi;
-
-        public WhisperSpeechTranscriber(string apiKey) : this(apiKey, "https://api.openai.com/v1") { }
-        public WhisperSpeechTranscriber(string apiKey, string apiEndpoint)
+        var options = new OpenAIClientOptions()
         {
-            _apiKey = apiKey;
-            _apiEndpoint = apiEndpoint;
+            Endpoint = new Uri(apiEndpoint ?? OpenAIOptions.OpenAIEndpoint)
+        };
 
-            openAiApi = new OpenAIAPI()
+        openAIClient = new OpenAIClient(new ApiKeyCredential(apiKey), options);
+    }
+
+    public async Task<SpeechRecording> TranscribeAsync(AudioBuffer audioBuffer, Language languageHint)
+    {
+        byte[] waveBytes = audioBuffer.ToWaveBytes();
+        using MemoryStream waveStream = new MemoryStream(waveBytes);
+
+        var audioClient = openAIClient.GetAudioClient("whisper-1");
+
+        var result = await audioClient.TranscribeAudioAsync(
+            audio: waveStream,
+            audioFilename: "audio.wav",
+            options: new AudioTranscriptionOptions()
             {
-                ApiUrlFormat = apiEndpoint + "/{1}",
-                Auth = new APIAuthentication(apiKey)
-            };
-        }
+                Language = languageHint?.GetTwoLettersCode()
+            });
 
-        public async Task<SpeechRecording> TranscribeAsync(AudioBuffer audioBuffer, Language languageHint)
+        var speechTranscription = new SpeechRecording(audioBuffer)
         {
-            byte[] waveBytes = audioBuffer.ToWaveBytes();
-            using MemoryStream waveStream = new MemoryStream(waveBytes);
-
-            var result = await openAiApi.Transcriptions.GetWithDetailsAsync
-            (
-                audioStream: waveStream,
-                filename: "audio.wav",
-                language: languageHint?.GetTwoLettersCode()
-            );
-
-            SpeechRecording speechTranscription = new SpeechRecording(audioBuffer)
+            Transcription = result.Value.Text,
+            Language = result.Value.Language switch
             {
-                Transcription = result.text,
-                Language = result.language switch
-                {
-                    "english" => Language.English,
-                    "french" => Language.French,
-                    _ => Language.English
-                }
-            };
+                "english" => Language.English,
+                "french" => Language.French,
+                _ => Language.English
+            }
+        };
 
-            return speechTranscription;
-        }
+        return speechTranscription;
     }
 }

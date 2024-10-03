@@ -1,6 +1,7 @@
-﻿using OpenAI_API;
-using OpenAI_API.Chat;
-using OpenAI_API.Models;
+﻿using System.ClientModel;
+
+using OpenAI;
+using OpenAI.Chat;
 
 namespace OmniBot.OpenAI.ChatCompletion;
 
@@ -10,7 +11,7 @@ public class ChatCompletionClient
     private string _apiEndpoint;
     private string _model;
 
-    private OpenAIAPI openAiApi;
+    private OpenAIClient openAIClient;
 
     public ChatCompletionClient(string apiKey, string model) : this(apiKey, model, "https://api.openai.com/v1") { }
     public ChatCompletionClient(string apiKey, string model, string apiEndpoint)
@@ -19,22 +20,27 @@ public class ChatCompletionClient
         _model = model;
         _apiEndpoint = apiEndpoint;
 
-        openAiApi = new OpenAIAPI()
+        var options = new OpenAIClientOptions()
         {
-            ApiUrlFormat = apiEndpoint + "/{1}",
-            Auth = new APIAuthentication(apiKey)
+            Endpoint = new Uri(apiEndpoint)
         };
+
+        openAIClient = new OpenAIClient(new ApiKeyCredential(apiKey), options);
     }
 
-    public async Task<ChatMessage> ProcessMessages(IEnumerable<ChatMessage> messages, float temperature = 0.7f)
+    public async Task<Message> ProcessMessages(IEnumerable<Message> messages, float temperature = 0.7f)
     {
-        var result = await openAiApi.Chat.CreateChatCompletionAsync
+        var chatClient = openAIClient.GetChatClient(_model);
+
+        var result = await chatClient.CompleteChatAsync
         (
-            messages: messages.ToArray(),
-            model: new Model(_model),
-            temperature: temperature
+            messages: messages.Select(m => m.ToChatMessage()).ToArray(),
+            options: new ChatCompletionOptions()
+            {
+                Temperature = temperature
+            }
         );
 
-        return result.Choices.FirstOrDefault()?.Message;
+        return new Message(MessageRole.Assistant, result.Value?.Content.FirstOrDefault()?.Text);
     }
 }
