@@ -13,8 +13,11 @@ namespace OmniBot.Windows
             public WaveFormat WaveFormat => audioSource?.Format.ToWaveFormat();
 
             private IAudioSource audioSource;
+
             private ConcurrentQueue<byte[]> bufferQueue = new();
-            private int bufferPosition = 0;
+
+            private byte[] currentBuffer = null;
+            private int currentBufferPosition = 0;
 
             public void ChangeAudioSource(IAudioSource audioSource)
             {
@@ -24,7 +27,8 @@ namespace OmniBot.Windows
                 this.audioSource = audioSource;
 
                 bufferQueue.Clear();
-                bufferPosition = 0;
+                currentBufferPosition = 0;
+                currentBuffer = null;
 
                 if (audioSource != null)
                     audioSource.OnAudioBufferReceived += AudioSource_OnAudioBufferReceived;
@@ -36,25 +40,27 @@ namespace OmniBot.Windows
 
                 while (n < count)
                 {
-                    if (!bufferQueue.TryDequeue(out byte[] nextBuffer))
+                    if (currentBuffer == null && !bufferQueue.TryDequeue(out currentBuffer))
                     {
                         Array.Clear(buffer, offset + n, count - n);
                         break;
                     }
 
-                    if (nextBuffer.Length - bufferPosition > count - n)
+                    if (currentBuffer.Length - currentBufferPosition > count - n)
                     {
-                        Array.Copy(nextBuffer, bufferPosition, buffer, offset + n, count - n);
-                        bufferPosition += count - n;
+                        Array.Copy(currentBuffer, currentBufferPosition, buffer, offset + n, count - n);
+                        currentBufferPosition += count - n;
                         break;
                     }
 
-                    Array.Copy(nextBuffer, bufferPosition, buffer, offset + n, nextBuffer.Length - bufferPosition);
-                    bufferPosition = 0;
-                    n += nextBuffer.Length;
+                    Array.Copy(currentBuffer, currentBufferPosition, buffer, offset + n, currentBuffer.Length - currentBufferPosition);
+                    n += currentBuffer.Length - currentBufferPosition;
+
+                    currentBufferPosition = 0;
+                    currentBuffer = null;
                 }
 
-                return n;
+                return count;
             }
 
             private void AudioSource_OnAudioBufferReceived(AudioBuffer audioBuffer)

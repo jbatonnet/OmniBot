@@ -15,10 +15,11 @@ public class LocalAudioSource : IAudioSource
 
     private TimeSpan timecode = TimeSpan.Zero;
 
-    public LocalAudioSource()
+    public LocalAudioSource() : this(AudioFormat.Default) { }
+    public LocalAudioSource(AudioFormat audioFormat)
     {
         _waveIn = new WaveInEvent();
-        _waveIn.WaveFormat = AudioFormat.Default.ToWaveFormat();
+        _waveIn.WaveFormat = audioFormat.ToWaveFormat();
 
         _waveIn.RecordingStopped += (s, e) =>
         {
